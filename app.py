@@ -1,17 +1,19 @@
-from flask import Flask,request, jsonify, Response
+from flask import Flask,request, jsonify, Response,send_file
 from tensorflow.python.platform import gfile
 import numpy as np
-import scipy
 import cv2
 import tensorflow as tf
 import mtcnn_detect
 import jsonpickle
 import facenet
 import pickle
-import api
-from scipy import misc
+
 app = Flask(__name__)
 
+#IMG_FOLDER = os.path.join('static')
+
+MODEL_PATH = './models/frozen.pb'
+SVM_PATH = 'svm_classifier.pkl'
 minsize = 20
 threshold = [0.6, 0.7, 0.7]
 factor = 0.709
@@ -19,12 +21,12 @@ margin = 44
 image_size = 160
 input_map=None
 embedding_size = 128
-(model, class_names) = pickle.load(open('svm_classifier.pkl', 'rb'))
+(model, class_names) = pickle.load(open(SVM_PATH, 'rb'))
 sess = tf.Session()
 #model_api = api.get_model_api()
 pnet, rnet, onet = mtcnn_detect.create_mtcnn(sess, 'models')
 def load_graph():
-    with gfile.FastGFile('./models/frozen.pb','rb') as f:
+    with gfile.FastGFile(MODEL_PATH,'rb') as f:
         graph_def = tf.GraphDef()
         graph_def.ParseFromString(f.read())
         tf.import_graph_def(graph_def, input_map=input_map, name='')
@@ -46,22 +48,16 @@ def index():
     :return: str
     """
     return "This is root!!!!"
-@app.route('/users/<user>')
-def hello_user(user):
-   """
-   this serves as a demo purpose
-   :param user:
-   :return: str
-   """
-   return "Hello %s!" % user
 graph=load_graph() 
-@app.route('/api/post_data', methods=['POST'])
+@app.route('/post', methods=['POST','GET'])
 def test():
-    r = request
-    # convert string of image data to uint8
-    nparr = np.fromstring(r.data, np.uint8)
-    # decode image
-    img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+    #read image file string data
+    filestr = request.files['file'].read()
+    #convert string data to numpy array
+    npimg = np.fromstring(filestr, np.uint8)
+    # convert numpy array to image
+    img = cv2.imdecode(npimg, cv2.IMREAD_UNCHANGED)
+   
     bounding_boxes = []
     sess= tf.Session(graph=graph)
     emb_array = np.zeros((1, embedding_size))
@@ -88,9 +84,10 @@ def test():
                 print('face is inner of range!')
                 continue
             cropped.append(img[bb[i][1]:bb[i][3], bb[i][0]:bb[i][2], :])
+            cv2.rectangle(img,(bb[i][0],bb[i][1]),(bb[i][2],bb[i][3]),(0,0,255), thickness=2) #draw bounding box for the face
             for i in range(len(cropped)):  
                 if cropped[i].shape[0] >70 and cropped[i].shape[1]>70:                       
-                    scaled.append(misc.imresize(cropped[i], (image_size, image_size), interp='bilinear'))
+                    scaled.append(cropped[i])
             for i in range(len(scaled)): 
                 scaled[i] = cv2.resize(scaled[i], (image_size,image_size),interpolation=cv2.INTER_CUBIC)
                 scaled[i] = facenet.prewhiten(scaled[i])
@@ -105,15 +102,16 @@ def test():
                 for j in range(len(best_class_indices)):
                                #print('%4d  %s: %.3f' % (i, class_names[best_class_indices[i]], best_class_probabilities[i]))
                     if (best_class_probabilities[j] >=0.13): 
-                        #cv2.putText(img, class_names[best_class_indices[j]], (bb[i][0], bb[i][1]-10), cv2.FONT_HERSHEY_COMPLEX_SMALL,1, (0,255,0), thickness=1, lineType=2)   
+                        cv2.putText(img, class_names[best_class_indices[j]], (bb[i][0], bb[i][1]-10), cv2.FONT_HERSHEY_COMPLEX_SMALL,1, (0,255,0), thickness=1, lineType=2)   
                         names.append(class_names[best_class_indices[j]])   
     # do some fancy processing here....
-
-   
+                    else:
+                        cv2.putText(img, "Unknown", (bb[i][0], bb[i][1]-10), cv2.FONT_HERSHEY_COMPLEX_SMALL,1, (0,255,0), thickness=1, lineType=2)   
+    cv2.imwrite('img.jpg',img)
     # encode response using jsonpickle
-    response_pickled = jsonpickle.encode(bounding_boxes.tolist())
+    #response_pickled = jsonpickle.encode(bounding_boxes.tolist())
 
-    return Response(response=response_pickled, status=200, mimetype="application/json")
+    return send_file('img.jpg', attachment_filename='img.jpg')
 
 if __name__ == '__main__':
     graph=load_graph() 
@@ -121,6 +119,5 @@ if __name__ == '__main__':
     embeddings = graph.get_tensor_by_name("embeddings:0")
     phase_train_placeholder = graph.get_tensor_by_name("phase_train:0")
     embedding_size = embeddings.get_shape()[1]
-    [print(n.name) for n in tf.get_default_graph().as_graph_def().node]
-    app.run()
+    app.run(host='0.0.0.0', port=5000)
 
