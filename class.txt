@@ -26,7 +26,6 @@ HOC SINH Z9
 HOC SINH A
 HoaSon
 Hung
-MTung
 Nghi
 ProfTho
 Thanh
@@ -36,11 +35,4 @@ Thuat
 Thuyen
 Tung
 Tuyen
-a
-d
-e
-q
-reew
-s
 tung
-x
