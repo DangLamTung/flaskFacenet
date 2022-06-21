@@ -16,7 +16,7 @@ jsonpickle==1.4.1
 Markdown==3.2.2
 MarkupSafe==1.1.1
 mysql-connector==2.2.9
-numpy==1.15.0
+numpy==1.22.0
 opencv-python==3.4.2.17
 protobuf==3.6.0
 python-sql==1.1.0
